@@ -8,6 +8,7 @@ const fsreaddirrecursive = require('fs-readdir-recursive');
 const recursivereaddir = require('recursive-readdir');
 const shortcutUrl = require('shortcut-url');
 const weblocParser = require('webloc-parser');
+const uuid = require('aguid');
 
 var inputFiles = [];
 var currImgIndex = 0;
@@ -194,12 +195,9 @@ function prepare() {
         ];
 
     for(var property in clarifaiResults) {
-        //console.log(property);
         let origPath = path.join('C:/users/apalaniuk/desktop/final-images/', path.normalize(property));
-        console.log('Path: ' + path.parse(path.normalize(property)).dir);
-        fs.copySync(origPath, 'C:\\users\\apalaniuk\\desktop\\course-image-catalog\\' + i);
+        fs.copySync(origPath, 'C:\\users\\apalaniuk\\desktop\\course-image-catalog\\images\\' + clarifaiResults[property].id);
         let fileName = path.parse(path.normalize(property)).name.toLowerCase();
-        console.log(fileName);
 
         let sizes = [];
 
@@ -219,7 +217,7 @@ function prepare() {
                 height: currSizePrototype.height,
                 density: 1,
                 filesize: lowDensitySize,
-                location: `/images/${i}/${lowDensityFileName}`
+                location: `/images/${clarifaiResults[property].id}/${lowDensityFileName}`
             });
 
             sizes.push({
@@ -227,13 +225,13 @@ function prepare() {
                 height: currSizePrototype.height,
                 density: 2,
                 filesize: highDensitySize,
-                location: `/images/${i}/${highDensityFileName}`
+                location: `/images/${clarifaiResults[property].id}/${highDensityFileName}`
             });
         }
 
         // Create database Object
         var databaseObj = {
-            imageId: i,
+            imageId: clarifaiResults[property].id,
             categories: {
                 'en-us': clarifaiResults[property].categories
             },
@@ -241,7 +239,7 @@ function prepare() {
                 'en-us': clarifaiResults[property].results[0].result.tag.classes
             },
             name: fileName,
-            sourceURL: clarifaiResults[property].sourceUrl,
+            sourceURL: clarifaiResults[property].sourceUrl || '',
             sizes: sizes
         };
 
@@ -251,11 +249,10 @@ function prepare() {
 
         if(i % 50 === 0) {
             console.log('Prepared ' + i + ' entries.');
-            break;
         }
     }
 
-    fs.writeFileSync('C:\\users\\apalaniuk\\desktop\\course-image-catalog\\course-image-catalog-database.json',
+    fs.writeFileSync('C:\\users\\apalaniuk\\desktop\\course-image-catalog\\imagesDataFile.json',
         JSON.stringify(database, null, 4)
     );
 }
@@ -374,8 +371,7 @@ function getCategories(inFile) {
         'foreign languages, middle near eastern': 'foreign languages, middle/near eastern',
         'resipiratory therapy': 'respiratory therapy',
         'enviromental and hazardous materials technology': 'environmental and hazardous materials technology',
-        'general health public health': 'general health/public health',
-        'theology and religous vocational': 'theology and religious vocational'
+        'general health public health': 'general health/public health'
     };
 
     fs.readFile(inFile, function(err, data) {
@@ -420,55 +416,60 @@ function getCategories(inFile) {
 }
 
 function addSourceUrls(inDir) {
-    var files = fsreaddirrecursive(inDir, function(fileName) {
-        //console.log('Filtering ' + fileName);
-        var ext = path.parse(fileName).ext;
-        return !ext || ext === '.webloc';
-    });
+    try {
+        var files = fsreaddirrecursive(inDir, function(fileName) {
+            //console.log('Filtering ' + fileName);
+            var ext = path.parse(fileName).ext;
+            return !ext || ext === '.webloc';
+        });
 
-    var sourceUrls = [];
+        var sourceUrls = [];
 
-    let myPromise = new Promise(
-        function(resolve, reject) {
-            for(var i = 0; i < files.length; i++) {
-                //console.log(path.join(inDir, files[i]));
-                let currIndex = resi;
-                let relFilePath = files[i];
-                let currFile = path.join(inDir, relFilePath);
-                weblocParser.getUrlFromFile(currFile).then(url => {
-                    sourceUrls.push({file: relFilePath, url: url});
+        let myPromise = new Promise(
+            function(resolve, reject) {
+                console.log('Number of files: ' + files.length);
+                for(var i = 0; i < files.length; i++) {
+                    //console.log(path.join(inDir, files[i]));
+                    let currIndex = i;
+                    let relFilePath = files[i];
+                    let currFile = path.join(inDir, relFilePath);
+                    weblocParser.getUrlFromFile(currFile).then(url => {
+                        sourceUrls.push({file: relFilePath, url: url});
+                        
+                        if(currIndex === files.length - 1) {
+                            console.log('URLs retrieved.');
+                            console.log(sourceUrls);
+                            resolve(sourceUrls);
+                        }
+                    }, function(reason) {
+                        console.log('could not get url from ' + currFile + ': ' + reason);
+                    });
                     
-                    if(currIndex === files.length - 1) {
-                        console.log('URLs retrieved.');
-                        //console.log(sourceUrls);
-                        resolve(sourceUrls);
+                    if(i % 100 === 0) {
+                        console.log('Processed ' + i + ' of ' + files.length + ' files.');
                     }
-                }, function(reason) {
-                    console.log('could not get url from ' + currFile + ': ' + reason);
-                });
-                
-                if(i % 100 === 0) {
-                    console.log('Processed ' + i + ' of ' + files.length + ' files.');
                 }
             }
-        }
-    ).then(derrr => {
-        // Add the URL to the correct object
-        let keys = Object.keys(clarifaiResults);
+        ).then(derrr => {
+            // Add the URL to the correct object
+            let keys = Object.keys(clarifaiResults);
 
-        for(var currResult = 0; currResult < sourceUrls.length; currResult++) {
-            let filePath = path.parse(sourceUrls[currResult].file).dir;
-            let keyIndex = keys.indexOf(filePath);
+            for(var currResult = 0; currResult < sourceUrls.length; currResult++) {
+                let filePath = path.parse(sourceUrls[currResult].file).dir;
+                let keyIndex = keys.indexOf(filePath);
 
-            if(keyIndex === -1) {
-                console.log('Couldn\'t get index of ' + filePath);
-                clarifaiResults[filePath].sourceUrl = '';
-            } else {
-                clarifaiResults[filePath].sourceUrl = sourceUrls[currResult].url;
+                if(keyIndex === -1) {
+                    console.log('Couldn\'t get index of ' + filePath);
+                    //clarifaiResults[filePath].sourceUrl = '';
+                } else {
+                    clarifaiResults[filePath].sourceUrl = sourceUrls[currResult].url;
+                }
             }
-        }
-        replServer.displayPrompt();
-    });
+            replServer.displayPrompt();
+        });
+    } catch (e) {
+        console.log('Couldn\'t parse urls: ' + e.toString());
+    }
 }
 
 function removeAbsPath() {
@@ -494,14 +495,6 @@ function removeAbsPath() {
 }
 
 function calcMinimumSetCover() {
-    // Create a list of all tags
-
-    // While >= 1 concept unknown
-        // Sort all images by the number of unknown tags, descending
-        // Deque the first image
-        // Remove all tags in this image from the global list
-        // Iterate through all remaining images, removing all instances of these tags, and the image itself if it has no more unknown tags
-
     let outstandingConceptIds = new Set();
     let imagesArray = [];
     let numRequestsRequired = 0;
@@ -554,6 +547,32 @@ function calcMinimumSetCover() {
     console.log("Number of requests required: " + numRequestsRequired);
 }
 
+function setUUIDs(inFile) {
+    let uuidSet = new Set();
+    fs.readFile(inFile, function(err, data) {
+            var fileData = JSON.parse(data);
+            var counter = 0;
+
+            for(var property in fileData) {
+                var newUUID = uuid(property);
+
+                if(uuidSet.has(newUUID)) {
+                    throw new Error('UUID for ' + property + ' is duplicate..');
+                }
+
+                uuidSet.add(newUUID);
+
+                fileData[property].id = newUUID;
+            }
+
+            fs.writeFileSync('C:\\clarifai_results_with_uuids.json',
+                JSON.stringify(fileData, null, 4)
+            );
+
+            console.log('Done.');
+        });
+}
+
 function myEval(cmd, context) {
     var args = cmd.trim().split(' ');
 
@@ -588,7 +607,9 @@ function myEval(cmd, context) {
         removeAbsPath();
     } else if(args[0] === 'calcMinimumSetCover') {
         calcMinimumSetCover();
-    } 
+    } else if(args[0] === 'setUUID') {
+        setUUIDs(args[1].trim());
+    }
     
     replServer.displayPrompt();
 }

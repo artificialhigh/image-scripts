@@ -8,11 +8,13 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "aguid": "^1.0.4",
     "clarifai": "^1.2.1",
     "copy": "^0.3.0",
     "copy-dir": "^0.3.0",
     "fs-extra": "^0.30.0",
     "fs-readdir-recursive": "^1.0.0",
+    "node-uuid": "^1.4.7",
     "recursive-readdir": "^2.0.0",
     "repl": "^0.1.3",
     "shortcut-url": "^2.0.0",
